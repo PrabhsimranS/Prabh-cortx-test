@@ -70,6 +70,8 @@ class ProvDeployK8sCortxLib:
         self.cortx_image = os.getenv("CORTX_IMAGE")
         self.cortx_server_image = os.getenv("CORTX_SERVER_IMAGE", None)
         self.service_type = os.getenv("SERVICE_TYPE", self.deploy_cfg["service_type"])
+        self.deployment_type = os.getenv("DEPLOYMENT_TYPE", self.deploy_cfg["deployment_type"])
+        self.lb_count = os.getenv("LB_COUNT", self.deploy_cfg["lb_count"])
         self.nodeport_https = os.getenv("HTTPS_PORT", self.deploy_cfg["https_port"])
         self.nodeport_http = os.getenv("HTTP_PORT", self.deploy_cfg["http_port"])
         self.control_nodeport_https = os.getenv("CONTROL_HTTPS_PORT",
@@ -1539,7 +1541,7 @@ class ProvDeployK8sCortxLib:
         resp = node_obj.execute_cmd(common_cmd.UPGRADE_CLUSTER_DESTRUPTIVE_CMD.format(
             PROV_CFG['k8s_cortx_deploy']["k8s_dir"]), read_lines=True)
         return resp
-    
+
     @staticmethod
     def update_sol_with_image_any_pod(file_path: str, image_dict: dict) -> tuple:
         """
@@ -1593,4 +1595,3 @@ class ProvDeployK8sCortxLib:
             LOGGER.info("Installing version is higher than installed version.")
         else:
             LOGGER.info("Installing version is not higher than installed version.")
-  
