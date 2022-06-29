@@ -23,8 +23,9 @@ Provisioner utiltiy methods
 import shutil
 import logging
 import time
-import jenkins
+from string import Template
 import re
+import jenkins
 import numpy as np
 from commons import constants as common_cnst
 from commons import commands as common_cmd
@@ -39,6 +40,7 @@ class Provisioner:
     """This class contains utility methods for all the provisioning related operations"""
 
     @staticmethod
+    # pylint: disable-msg=too-many-locals
     def build_job(
             job_name: str,
             parameters: dict = None,
@@ -217,6 +219,7 @@ class Provisioner:
                     key="storage.cvg.0.metadata_devices",
                     value=metadata_devices,
                     add_section=False)
+        # pylint: disable=broad-except
         except Exception as error:
             LOGGER.error(
                 "An error occurred in %s:",
@@ -253,7 +256,7 @@ class Provisioner:
             bootstrap_cmd = "{0} {1}:{2}".format(bootstrap_cmd, node, hostname)
         LOGGER.info("Running Bootstrap command %s", bootstrap_cmd)
         node1_obj = node_obj_list[0]
-        node1_obj.connect(shell=True)
+        node1_obj.connect(shell=True)  #nosec
         channel = node1_obj.shell_obj
         output = ""
         current_output = ""
@@ -303,6 +306,7 @@ class Provisioner:
                 read_lines=True)
             resp = node_obj.execute_cmd(
                 cmd=common_cmd.CMD_CONFSTORE_EXPORT, read_lines=True)
+        # pylint: disable=broad-except
         except Exception as error:
             LOGGER.error(
                 "An error occurred in %s:",
@@ -336,6 +340,7 @@ class Provisioner:
                 command = " ".join([command, "--no-color"])
                 resp = node_obj.execute_cmd(cmd=command, read_lines=True)
                 LOGGER.debug(resp)
+        # pylint: disable=broad-except
         except Exception as error:
             LOGGER.error(
                 "An error occurred in %s:",
@@ -369,6 +374,7 @@ class Provisioner:
                 node_obj.execute_cmd(
                     cmd=common_cmd.CMD_DEPLOY_VM.format(
                         setup_type, comp), read_lines=True)
+            # pylint: disable=broad-except
             except Exception as error:
                 LOGGER.error(
                     "An error occurred in %s:",
@@ -405,6 +411,7 @@ class Provisioner:
                 return False, inactive_ports
 
             return True, active_ports
+        # pylint: disable=broad-except
         except Exception as error:
             LOGGER.error(
                 "An error occurred in %s:",
@@ -430,18 +437,16 @@ class Provisioner:
             chk = "srvnode-{}".format(node_id)
             cmd = common_cmd.CMD_PILLAR_DATA.format(chk, key)
             resp = node_obj.execute_cmd(cmd, read_lines=True)
-            LOGGER.debug(f"pillar command output for {chk}'s {key}: {resp}")
+            LOGGER.debug("pillar command output for %s's %s: %s", chk, key, resp)
             data1 = ansi_escape.sub('', resp[1])
             out = data1.strip()
-            LOGGER.info("{} for {} is {}".format(key, chk, out))
+            LOGGER.info("%s for %s is %s", key, chk, out)
             cmd = common_cmd.CMD_CONFSTORE_TMPLT.format(out)
             resp1 = node_obj.execute_cmd(cmd, read_lines=True)
-            LOGGER.debug(
-                f"confstore template command output for {chk}'s {key}: {resp1}")
+            LOGGER.debug("confstore template command output for %s's %s: %s", chk, key, resp1)
             if resp1:
                 return True, "Key from pillar and confstore match."
-            else:
-                return False, "Key doesn't match."
+            return False, "Key doesn't match."
         except IOError as error:
             LOGGER.error(
                 "An error occurred in %s:",
@@ -462,8 +467,7 @@ class Provisioner:
             resp = node_obj.execute_cmd(cmd, read_lines=True)
             if resp:
                 return True, f"Executed {cmd}"
-            else:
-                return False, f"Failed {cmd}"
+            return False, f"Failed {cmd}"
         except IOError as error:
             LOGGER.error(
                 "An error occurred in %s:",
@@ -482,8 +486,8 @@ class Provisioner:
         grep_chrony = node_obj.execute_cmd(cmd, read_lines=True)
         if time_server in grep_chrony[0]:
             return True, grep_chrony
-        else:
-            return False, f"{time_server} is not in /etc/chrony.conf"
+
+        return False, f"{time_server} is not in /etc/chrony.conf"
 
     @staticmethod
     def get_ntpsysconfg(key: list, node_obj, node_id: int):
@@ -501,7 +505,7 @@ class Provisioner:
             chk = "srvnode-{}".format(node_id)
             cmd = common_cmd.CMD_GET_SYSTEM_NTP.format(chk)
             resp = node_obj.execute_cmd(cmd, read_lines=True)
-            LOGGER.debug(f"pillar command output for {chk}'s system: {resp}\n")
+            LOGGER.debug("pillar command output for %s's system: %s\n", chk, resp)
             for value in resp:
                 data1.append(ansi_escape.sub('', value).strip())
             for key_val in key:
@@ -518,8 +522,7 @@ class Provisioner:
             key: list,
             node_obj,
             node_id: int,
-            exp_t_srv: str,
-            exp_t_zone: str):
+            **kwargs):
         """
         Helper function to verify the system NTP configuration
         param: key: NTP keys to be verified
@@ -529,14 +532,14 @@ class Provisioner:
         param: exp_t_zone: Expected time_zone value
         return: bool, Execution response
         """
+        exp_t_srv = kwargs.get("exp_t_srv")
+        exp_t_zone = kwargs.get("exp_t_zone")
         resp = self.get_ntpsysconfg(key, node_obj, node_id)
         if resp[0]:
             if resp[1][key[0]] == exp_t_srv and resp[1][key[1]] == exp_t_zone:
                 return True, resp[1]
-            else:
-                return False, f"NTP Configuration Verification Failed for srvnode-{node_id}"
-        else:
-            return resp
+            return False, ("NTP Configuration Verification Failed for srvnode-%s", node_id)
+        return resp
 
     # pylint:disable=too-many-locals,too-many-statements,too-many-branches
     @staticmethod
@@ -588,25 +591,9 @@ class Provisioner:
             valid_disk_count = int(sns_data) + int(sns_parity) + int(sns_spare)
             sns = {"data": sns_data, "parity": sns_parity, "spare": sns_spare}
             dix = {"data": dix_data, "parity": dix_parity, "spare": dix_spare}
-            LOGGER.info("Configuring SNS pool : %s", sns)
-            for key, value in sns.items():
-                config_utils.update_config_ini(
-                    config_file,
-                    section="srvnode_default",
-                    key="storage.durability.sns.{}".format(key),
-                    value=value,
-                    add_section=False)
-            LOGGER.info("Configuring DIX pool  : %s", dix)
-            for key, value in dix.items():
-                config_utils.update_config_ini(
-                    config_file,
-                    section="srvnode_default",
-                    key="storage.durability.dix.{}".format(key),
-                    value=value,
-                    add_section=False)
             for node_count, node_obj in enumerate(node_obj_list, start=1):
                 LOGGER.info("Configuring CVG for %s", node_obj.hostname)
-                node = "srvnode-{}".format(node_count)
+                node = Template("srvnode-$serial").substitute(serial=node_count)
                 hostname = node_obj.hostname
                 device_list = node_obj.execute_cmd(cmd=common_cmd.CMD_LIST_DEVICES,
                                                    read_lines=True)[0].split(",")
@@ -640,25 +627,14 @@ class Provisioner:
                     for count in range(0, count):
                         data_devices.append(",".join(data_devices_f[count]))
 
-                config_utils.update_config_ini(
-                    config_file, node, key="hostname", value=hostname, add_section=False)
-                for cvg in range(0, cvg_count):
-                    LOGGER.info("CVG : %s", cvg)
-                    LOGGER.info("Updating Data Devices: %s", data_devices[cvg])
-                    config_utils.update_config_ini(
-                        config_file,
-                        node,
-                        key="storage.cvg.{}.data_devices".format(cvg),
-                        value=data_devices[cvg],
-                        add_section=False)
-                    LOGGER.info("Updating Metadata Devices: %s", metadata_devices[cvg])
-                    config_utils.update_config_ini(
-                        config_file,
-                        node,
-                        key="storage.cvg.{}.metadata_devices".format(cvg),
-                        value=metadata_devices[cvg],
-                        add_section=False)
-
+                resp = Provisioner.update_conf_file(config_file, node, hostname=hostname,
+                                                    data_devices=data_devices,
+                                                    metadata_devices=metadata_devices,
+                                                    cvg_count=cvg_count, sns=sns,
+                                                    dix=dix)
+                if resp[0]:
+                    LOGGER.info("Updated the config ini file %s", resp[1])
+        # pylint: disable=broad-except
         except Exception as error:
             LOGGER.error(
                 "An error occurred in %s:",
@@ -680,7 +656,7 @@ class Provisioner:
         :return: True/False and message
         """
         try:
-            node_obj.connect(shell=True)
+            node_obj.connect(shell=True)  #nosec
             output = ''
             time.sleep(1)
             output += node_obj.shell_obj.recv(2048).decode("utf-8")
@@ -707,12 +683,69 @@ class Provisioner:
             time.sleep(1)
             output += node_obj.shell_obj.recv(2048).decode("utf-8")
             if output:
-                LOGGER.debug("Confirmation after setting new password is - {}".format(output))
-
+                LOGGER.debug("Confirmation after setting new password is - %s", output)
+        # pylint: disable=broad-except
         except Exception as error:
             LOGGER.error(
                 "An error occurred in %s:",
                 Provisioner.change_field_user_password.__name__)
-            LOGGER.error("Unable to set new password due to - {}".format(str(error)))
+            LOGGER.error("Unable to set new password due to - %s", (str(error)))
             return False, error
         return True, "Password change Successful!!"
+
+    @staticmethod
+    def update_conf_file(config_file, node, **kwargs):
+        """
+        This method is to update the file with CVG details
+        Params: config_file: ini file used for deployment
+        node: Host object of all the nodes in a cluster
+        hostname: server hostname
+        cvg_count: No. of cvg to be created on all the nodes in a cluster
+        metadata_devices: metadata devices used for CVG
+        data_devices data devices used for CVG
+        returns True and config file path
+        """
+        hostname = kwargs.get("hostname")
+        cvg_count = kwargs.get("cvg_count")
+        metadata_devices = kwargs.get("metadata_devices")
+        data_devices = kwargs.get("data_devices")
+        sns = kwargs.get("sns")
+        dix = kwargs.get("dix")
+
+        LOGGER.info("Configuring SNS pool : %s", sns)
+        for key, value in sns.items():
+            config_utils.update_config_ini(
+                config_file,
+                section="srvnode_default",
+                key=Template("storage.durability.sns.$sns").substitute(sns=key),
+                value=value,
+                add_section=False)
+        LOGGER.info("Configuring DIX pool  : %s", dix)
+        for key, value in dix.items():
+            config_utils.update_config_ini(
+                config_file,
+                section="srvnode_default",
+                key=Template("storage.durability.dix.$dix").substitute(dix=key),
+                value=value,
+                add_section=False)
+        config_utils.update_config_ini(config_file, node,
+                                       key="hostname",
+                                       value=hostname,
+                                       add_section=False)
+        for cvg in range(0, cvg_count):
+            LOGGER.info("CVG : %s", cvg)
+            LOGGER.info("Updating Data Devices: %s", data_devices[cvg])
+            config_utils.update_config_ini(
+                config_file,
+                node,
+                key=Template("storage.cvg.$num.data_devices").substitute(num=cvg),
+                value=data_devices[cvg],
+                add_section=False)
+            LOGGER.info("Updating Metadata Devices: %s", metadata_devices[cvg])
+            config_utils.update_config_ini(
+                config_file,
+                node,
+                key=Template("storage.cvg.$num.metadata_devices").substitute(num=cvg),
+                value=metadata_devices[cvg],
+                add_section=False)
+        return True, config_file
